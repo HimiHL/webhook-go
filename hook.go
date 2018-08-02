@@ -46,7 +46,7 @@ func ParseGitEE(request *http.Request) string {
 	projectName := strings.Split(projName, `/`)
 
 	// 读取文件
-	filename := projectName[0] + `_` + projectName[1] + `_` + branch + `.json`
+	filename := projectName[0] + `.` + projectName[1] + `.` + branch + `.json`
 
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
