@@ -1,10 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -30,6 +30,7 @@ func gitee(w http.ResponseWriter, request *http.Request) {
 func ParseGitEE(request *http.Request) string {
 	result, err := ioutil.ReadAll(request.Body)
 	if err != nil {
+		Logger(`请求参数无法获取:` + err.Error())
 		return "未获取到数据"
 	}
 
@@ -50,11 +51,13 @@ func ParseGitEE(request *http.Request) string {
 
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
+		Logger(`无法读取文件:` + filename + `:` + err.Error())
 		return "无法获取数据-"
 	}
 
 	fileJSON, err := simplejson.NewJson(b)
 	if err != nil {
+		Logger(`JSON解析错误:` + err.Error())
 		return "数据解析错误"
 	}
 	filePwd, _ := fileJSON.Get(`password`).String()
@@ -64,21 +67,33 @@ func ParseGitEE(request *http.Request) string {
 	// 校验密码
 	pwd, _ := json.Get(`password`).String()
 	if pwd != filePwd {
+		Logger(`密码校验错误:` + pwd + `:正确密码:` + filePwd + `:` + err.Error())
 		return "凭证校验异常"
 	}
 	// 执行Shell 命令
-	c := `git.sh ` + filePath + ` ` + fileHead + ` ` + branch
+	c := `./git.sh ` + filePath + ` ` + fileHead + ` ` + branch
 	cmd := exec.Command("sh", "-c", c)
-	out, err := cmd.Output()
+	// out, err := cmd.Output() // 该操作会阻塞
+	err = cmd.Start() // 该操作不阻塞
 	if err != nil {
+		Logger(`Shell执行异常:` + c + `:` + err.Error())
 		return "任务执行异常"
 	}
-	fmt.Println(out)
 	return "Hello!"
 }
 
 func index(w http.ResponseWriter, request *http.Request) {
 	w.Write([]byte(`Hello`))
+}
+
+func Logger(message string) {
+	filename := "runtime.log"
+	logFile, err := os.Create(filename)
+	defer logFile.Close()
+	if err != nil {
+	}
+	debugLog := log.New(logFile, "[Info]", log.Llongfile)
+	debugLog.Println(message)
 }
 
 func main() {
