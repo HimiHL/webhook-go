@@ -29,7 +29,7 @@ func coding(w http.ResponseWriter, request *http.Request) {
 	// 获取响应头
 	contentType := request.Header.Get("Content-Type")
 	if contentType == "application/json" {
-		json := ParseGitEE(request)
+		json := ParseCoding(request)
 		w.Write([]byte(json))
 	} else {
 		w.Write([]byte(`Hello Coding`))
@@ -51,7 +51,9 @@ func ParseCoding(request *http.Request) string {
 	json, err := simplejson.NewJson(result)
 
 	// 分支名称
-	branch, _ := json.Get(`ref`).String()
+	ref, _ := json.Get(`ref`).String()
+	branchs := strings.Split(ref, `/`)
+	branch := branchs[2]
 
 	// 获取拥有者
 	owner, _ := json.Get(`repository`).Get(`owner`).Get(`name`).String()
