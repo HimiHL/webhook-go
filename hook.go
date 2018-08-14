@@ -19,8 +19,78 @@ func gitee(w http.ResponseWriter, request *http.Request) {
 	if contentType == "application/json" {
 		json := ParseGitEE(request)
 		w.Write([]byte(json))
+	} else {
+		w.Write([]byte(`Hello GitEE`))
+	}
+}
+
+// 解析Coding的请求
+func coding(w http.ResponseWriter, request *http.Request) {
+	// 获取响应头
+	contentType := request.Header.Get("Content-Type")
+	if contentType == "application/json" {
+		json := ParseGitEE(request)
+		w.Write([]byte(json))
+	} else {
+		w.Write([]byte(`Hello Coding`))
+	}
+}
+
+/**
+解析JSON数据
+ *
+*/
+func ParseCoding(request *http.Request) string {
+	result, err := ioutil.ReadAll(request.Body)
+	if err != nil {
+		Logger(`请求参数无法获取:` + err.Error())
+		return "未获取到数据"
 	}
 
+	// 解析JSON
+	json, err := simplejson.NewJson(result)
+
+	// 分支名称
+	branch, _ := json.Get(`ref`).String()
+
+	// 获取拥有者
+	owner, _ := json.Get(`repository`).Get(`owner`).Get(`name`).String()
+	projectName, _ := json.Get(`repository`).Get(`name`).String()
+
+	// 读取文件
+	filename := owner + `.` + projectName + `.` + branch + `.json`
+
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		Logger(`无法读取文件:` + filename + `:` + err.Error())
+		return "无法获取数据-"
+	}
+
+	fileJSON, err := simplejson.NewJson(b)
+	if err != nil {
+		Logger(`JSON解析错误:` + err.Error())
+		return "数据解析错误"
+	}
+	filePwd, _ := fileJSON.Get(`password`).String()
+	filePath, _ := fileJSON.Get(`path`).String()
+	fileHead, _ := fileJSON.Get(`head`).String()
+
+	// 校验密码
+	pwd, _ := json.Get(`token`).String()
+	if pwd != filePwd {
+		Logger(`密码校验错误:` + pwd + `:正确密码:` + filePwd + `:` + err.Error())
+		return "凭证校验异常"
+	}
+	// 执行Shell 命令
+	c := `./git.sh ` + filePath + ` ` + fileHead + ` ` + branch
+	cmd := exec.Command("sh", "-c", c)
+	// out, err := cmd.Output() // 该操作会阻塞
+	err = cmd.Start() // 该操作不阻塞
+	if err != nil {
+		Logger(`Shell执行异常:` + c + `:` + err.Error())
+		return "任务执行异常"
+	}
+	return "Hello!"
 }
 
 /**
@@ -99,6 +169,7 @@ func Logger(message string) {
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/gitee", gitee)
+	mux.HandleFunc("/coding", coding)
 	mux.HandleFunc("/", index)
 	log.Fatalln(http.ListenAndServe(":7442", mux))
 }
