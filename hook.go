@@ -79,9 +79,11 @@ func ParseCoding(request *http.Request) string {
 
 	// 校验密码
 	pwd, _ := json.Get(`token`).String()
-	if pwd != filePwd {
-		Logger(`密码校验错误:` + pwd + `:正确密码:` + filePwd + `:` + err.Error())
-		return "凭证校验异常"
+	if pwd != `` {
+		if pwd != filePwd {
+			Logger(`密码校验错误:` + pwd + `:正确密码:` + filePwd + `:` + err.Error())
+			return "凭证校验异常"
+		}
 	}
 	// 执行Shell 命令
 	c := `./git.sh ` + filePath + ` ` + fileHead + ` ` + branch
@@ -126,6 +128,7 @@ func ParseGitEE(request *http.Request) string {
 		Logger(`无法读取文件:` + filename + `:` + err.Error())
 		return "无法获取数据-"
 	}
+	return string(b)
 
 	fileJSON, err := simplejson.NewJson(b)
 	if err != nil {
@@ -138,9 +141,11 @@ func ParseGitEE(request *http.Request) string {
 
 	// 校验密码
 	pwd, _ := json.Get(`password`).String()
-	if pwd != filePwd {
-		Logger(`密码校验错误:` + pwd + `:正确密码:` + filePwd + `:` + err.Error())
-		return "凭证校验异常"
+	if pwd != `` {
+		if pwd != filePwd {
+			Logger(`密码校验错误:` + pwd + `:正确密码:` + filePwd + `:` + err.Error())
+			return "凭证校验异常"
+		}
 	}
 	// 执行Shell 命令
 	c := `./git.sh ` + filePath + ` ` + fileHead + ` ` + branch
