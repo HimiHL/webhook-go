@@ -1,6 +1,6 @@
 # Go编写的自动部署
 
-主要用于小项目托管在Gitee.com和Coding.net中的项目进行自动部署，轻量小巧，将 `hook` 或者 `hook.exe` 运行，就可以运行一个接收hook的HTTP服务器
+主要用于小项目托管在Gitee.com和Coding.net中的项目进行自动部署，将 `hook` 或者 `hook.exe` 运行，就可以运行一个接收hook的HTTP服务器
 
 可多项目部署，如有多个项目，增加多个 `.json` 文件配置即可
 
