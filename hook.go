@@ -88,6 +88,13 @@ func coding(w http.ResponseWriter, request *http.Request) {
  *
  */
 func ParseCoding(request *http.Request) string {
+
+	event := request.Header.Get(`X-Coding-Event`)
+
+	if event == `ping` {
+		return "这个Coding不简单"
+	}
+
 	result, err := ioutil.ReadAll(request.Body)
 	if err != nil {
 		log.Print(`请求参数无法获取:` + err.Error())
