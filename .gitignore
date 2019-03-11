@@ -2,3 +2,4 @@
 log
 pid
 *.json
+!user.project.branch.json
