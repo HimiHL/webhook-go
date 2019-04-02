@@ -137,6 +137,57 @@ func coding(w http.ResponseWriter, request *http.Request) {
 	w.Write([]byte(json))
 }
 
+func index(w http.ResponseWriter, request *http.Request) {
+	// 处理UserAgent，判断是Coding还是Gitee
+	userAgent := request.Header.Get(`User-Agent`)
+	json := `Hello`
+	if strings.Contains(userAgent, `oschina`) {
+		json = ParseCoding(request)
+	} else if strings.Contains(userAgent, `Coding`) {
+		json = ParseGitEE(request)
+	}
+
+	w.Write([]byte(json))
+}
+
+func hook(owner string, projectName string, branch string, pwd string) string {
+
+	// 读取文件
+	filename := owner + `.` + projectName + `.` + branch + `.json`
+
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Print(`无法读取文件:` + filename + `:` + err.Error())
+		return "无法获取数据-"
+	}
+
+	fileJSON, err := simplejson.NewJson(b)
+	if err != nil {
+		log.Print(`JSON解析错误:` + err.Error())
+		return "数据解析错误"
+	}
+	filePwd, _ := fileJSON.Get(`password`).String()
+	filePath, _ := fileJSON.Get(`path`).String()
+	fileHead, _ := fileJSON.Get(`head`).String()
+
+	// 校验密码
+	if pwd != `` {
+		if pwd != filePwd {
+			log.Print(`密码校验错误:` + pwd + `:正确密码:` + filePwd + `:` + err.Error())
+			return "凭证校验异常"
+		}
+	}
+	// 执行Shell 命令
+	c := `./git.sh ` + filePath + ` ` + fileHead + ` ` + branch
+	cmd := exec.Command("sh", "-c", c)
+	err = cmd.Start() // 该操作不阻塞
+	if err != nil {
+		log.Print(`Shell执行异常:` + c + `:` + err.Error())
+		return "任务执行异常"
+	}
+	return "Hello!"
+}
+
 /**
  *
  * 解析Coding.net的数据
@@ -177,41 +228,11 @@ func ParseCoding(request *http.Request) string {
 	owner, _ := json.Get(`repository`).Get(`owner`).Get(`name`).String()
 	projectName, _ := json.Get(`repository`).Get(`name`).String()
 
-	// 读取文件
-	filename := owner + `.` + projectName + `.` + branch + `.json`
-
-	b, err := ioutil.ReadFile(filename)
-	if err != nil {
-		log.Print(`无法读取文件:` + filename + `:` + err.Error())
-		return "无法获取数据-"
-	}
-
-	fileJSON, err := simplejson.NewJson(b)
-	if err != nil {
-		log.Print(`JSON解析错误:` + err.Error())
-		return "数据解析错误"
-	}
-	filePwd, _ := fileJSON.Get(`password`).String()
-	filePath, _ := fileJSON.Get(`path`).String()
-	fileHead, _ := fileJSON.Get(`head`).String()
-
-	// 校验密码
+	// 获取密码
 	pwd, _ := json.Get(`token`).String()
-	if pwd != `` {
-		if pwd != filePwd {
-			log.Print(`密码校验错误:` + pwd + `:正确密码:` + filePwd + `:` + err.Error())
-			return "凭证校验异常"
-		}
-	}
-	// 执行Shell 命令
-	c := `./git.sh ` + filePath + ` ` + fileHead + ` ` + branch
-	cmd := exec.Command("sh", "-c", c)
-	err = cmd.Start() // 该操作不阻塞
-	if err != nil {
-		log.Print(`Shell执行异常:` + c + `:` + err.Error())
-		return "任务执行异常"
-	}
-	return "Hello!"
+
+	return hook(owner, projectName, branch, pwd)
+
 }
 
 /**
@@ -235,46 +256,12 @@ func ParseGitEE(request *http.Request) string {
 
 	// 获取项目名称
 	projName, _ := json.Get(`repository`).Get(`path_with_namespace`).String()
-	projectName := strings.Split(projName, `/`)
+	projectNameArr := strings.Split(projName, `/`)
+	owner := projectNameArr[0]
+	projectName := projectNameArr[1]
 
-	// 读取文件
-	filename := projectName[0] + `.` + projectName[1] + `.` + branch + `.json`
-
-	b, err := ioutil.ReadFile(filename)
-	if err != nil {
-		log.Print(`无法读取文件:` + filename + `:` + err.Error())
-		return "无法获取数据-"
-	}
-
-	fileJSON, err := simplejson.NewJson(b)
-	if err != nil {
-		log.Print(`JSON解析错误:` + err.Error())
-		return "数据解析错误"
-	}
-	filePwd, _ := fileJSON.Get(`password`).String()
-	filePath, _ := fileJSON.Get(`path`).String()
-	fileHead, _ := fileJSON.Get(`head`).String()
-
-	// 校验密码
+	// 获取密码
 	pwd, _ := json.Get(`password`).String()
-	if pwd != `` {
-		if pwd != filePwd {
-			log.Print(`密码校验错误:` + pwd + `:正确密码:` + filePwd + `:` + err.Error())
-			return "凭证校验异常"
-		}
-	}
-	// 执行Shell 命令
-	c := `./git.sh ` + filePath + ` ` + fileHead + ` ` + branch
-	cmd := exec.Command("sh", "-c", c)
-	// out, err := cmd.Output() // 该操作会阻塞
-	err = cmd.Start() // 该操作不阻塞
-	if err != nil {
-		log.Print(`Shell执行异常:` + c + `:` + err.Error())
-		return "任务执行异常"
-	}
-	return "Hello!"
-}
 
-func index(w http.ResponseWriter, request *http.Request) {
-	w.Write([]byte(`Hello`))
+	return hook(owner, projectName, branch, pwd)
 }
