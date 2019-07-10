@@ -108,6 +108,7 @@ func serveHTTP() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/gitee", gitee)
 	mux.HandleFunc("/coding", coding)
+	mux.HandleFunc("/gogs", gogs)
 	mux.HandleFunc("/", index)
 	log.Fatalln(http.ListenAndServe(":"+*port, mux))
 }
@@ -137,14 +138,23 @@ func coding(w http.ResponseWriter, request *http.Request) {
 	w.Write([]byte(json))
 }
 
+func gogs(w http.ResponseWriter, request *http.Request) {
+	json := ParseGogs(request)
+	w.Write([]byte(json))
+}
+
 func index(w http.ResponseWriter, request *http.Request) {
 	// 处理UserAgent，判断是Coding还是Gitee
-	userAgent := request.Header.Get(`User-Agent`)
+	// X-Coding-Event
+	// X-Gitee-Event
+	// X-Gogs-Event
 	json := `Hello`
-	if strings.Contains(userAgent, `oschina`) {
+	if request.Header.Get(`X-Coding-Event`) != `` {
 		json = ParseCoding(request)
-	} else if strings.Contains(userAgent, `Coding`) {
+	} else if request.Header.Get(`X-Gitee-Event`) != `` {
 		json = ParseGitEE(request)
+	} else if request.Header.Get(`X-Gogs-Event`) != `` {
+		json = ParseGogs(request)
 	}
 
 	w.Write([]byte(json))
@@ -262,6 +272,33 @@ func ParseGitEE(request *http.Request) string {
 
 	// 获取密码
 	pwd, _ := json.Get(`password`).String()
+
+	return hook(owner, projectName, branch, pwd)
+}
+
+func ParseGogs(request *http.Request) string {
+	result, err := ioutil.ReadAll(request.Body)
+	if err != nil {
+		log.Print(`请求参数无法获取:` + err.Error())
+		return "未获取到数据"
+	}
+
+	// 解析JSON
+	json, err := simplejson.NewJson(result)
+
+	// 分支名称
+	ref, _ := json.Get(`ref`).String()
+	branchs := strings.Split(ref, `/`)
+	branch := branchs[2]
+
+	// 获取项目名称
+	projName, _ := json.Get(`repository`).Get(`full_name`).String()
+	projectNameArr := strings.Split(projName, `/`)
+	owner := projectNameArr[0]
+	projectName := projectNameArr[1]
+
+	// 获取密码 # 暂时不做密码处理，空了再做
+	pwd := ``
 
 	return hook(owner, projectName, branch, pwd)
 }
