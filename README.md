@@ -1,6 +1,6 @@
 # 前言
 
-主要用于小项目托管在[码云](http://gitee.com)和[Coding](http://coding.net)中的项目进行自动部署，将 `hook`  运行，就可以运行一个轻型的HTTP服务器
+主要用于小项目托管在[码云](http://gitee.com)和[Coding](http://coding.net)等平台的项目进行自动部署，将 `hook`  运行，就可以运行一个轻型的HTTP服务器
 
 可多项目部署，如有多个项目，增加多个 `.json` 文件配置即可，__不需要重启hook进程__
 
@@ -8,9 +8,12 @@
 # 支持
 
 - [x] 支持Linux平台下部署
-- [x] 支持Git协议，即: git@coding.net:user/project.git
-- [ ] 不支持Http协议，即: https://git.coding.net/user/project.git
+- [x] 支持Git协议
+- [x] 支持Http协议，需配置credential.helper
 - [x] 支持自定义Shell脚本
+- [x] 支持Gogs
+- [x] 支持Coding
+- [x] 支持Gitee
 
 # 命令列表
 
@@ -25,6 +28,10 @@ hook -s stop     # 强行停止 SIGKILL
 
 # 路由列表
 
+* /
+
+自动解析，将根据Header头中的参数自动解析
+
 * /gitee
 
 解析[码云](http://gitee.com)的webhook通知，支持 `ContentType: application/json` 
@@ -32,6 +39,10 @@ hook -s stop     # 强行停止 SIGKILL
 * /coding
   
 解析[Coding](http://coding.net)的webhook通知，支持V2版本的通知、`ContentType: application/json`
+
+* /gogs
+  
+解析Gogs系列的webhook通知，支持`ContentType: application/json`
 
 
 # 文件说明
@@ -55,7 +66,7 @@ hook -s stop     # 强行停止 SIGKILL
 
 * **user.project.branch.json**
 
-例如你的coding用户名为**test**，项目名称为 himiweb，部署分支为 master， 则文件命名为： `test.himiweb.master.json`
+例如你的coding用户名/分组名为**test**，项目名称为 himiweb，部署分支为 master， 则文件命名为： `test.himiweb.master.json`
 
 #### JSON配置解析
 

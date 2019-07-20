@@ -195,7 +195,7 @@ func hook(owner string, projectName string, branch string, pwd string) string {
 		log.Print(`Shell执行异常:` + c + `:` + err.Error())
 		return "任务执行异常"
 	}
-	return "Hello!"
+	return "The Job Done!"
 }
 
 /**
