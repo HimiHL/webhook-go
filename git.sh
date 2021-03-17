@@ -5,10 +5,14 @@ WEB_USERGROUP='www'
 
 echo "Pulling Source Code"
 cd $WEB_PATH
-sudo git reset --hard $2
-sudo git clean -f
-sudo git pull
-sudo git checkout $3
+if [ ! -d ".git" ]; then
+    sudo git clone $3 $1
+else
+    sudo git reset --hard origin/$2
+    sudo git clean -f
+    sudo git pull
+    sudo git checkout $2
+fi
 echo "Reset Permission"
 sudo chown -R $WEB_USER:$WEB_USERGROUP $WEB_PATH
 echo "Finished"

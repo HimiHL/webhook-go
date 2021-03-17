@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -10,8 +12,8 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"webhook/model"
 
-	"github.com/bitly/go-simplejson"
 	daemon "github.com/sevlyar/go-daemon"
 )
 
@@ -20,6 +22,8 @@ var (
 	signal = flag.String("s", "", "send `signal` to a master process: stop, reload")
 	port   = flag.String("p", "7442", "HTTP Server Port, Default `7442`")
 )
+
+var appConfig model.Config
 
 func init() {
 	flag.Usage = usage
@@ -41,6 +45,7 @@ func killHandler(sig os.Signal) error {
 
 func reloadHandler(sig os.Signal) error {
 	log.Println("服务器重载成功")
+	loadConfig()
 	return nil
 }
 
@@ -95,6 +100,11 @@ func deamonHTTP() {
 	log.Print("- - - - - - - - - - - - - - -")
 	log.Print("进程运行")
 
+	loadConfig()
+
+	log.Print("- - - - - - - - - - - - - - -")
+	log.Print("加载配置文件")
+
 	go serveHTTP()
 
 	err = daemon.ServeSignals()
@@ -106,36 +116,8 @@ func deamonHTTP() {
 
 func serveHTTP() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/gitee", gitee)
-	mux.HandleFunc("/coding", coding)
-	mux.HandleFunc("/gogs", gogs)
-	mux.HandleFunc("/", index)
+	mux.HandleFunc("/", gogs)
 	log.Fatalln(http.ListenAndServe(":"+*port, mux))
-}
-
-/**
- * gitee.com 的Webhook解析
- * 目前Content-Type只有JSON格式
- *
- */
-func gitee(w http.ResponseWriter, request *http.Request) {
-	contentType := request.Header.Get("Content-Type")
-	if contentType == "application/json" {
-		json := ParseGitEE(request)
-		w.Write([]byte(json))
-	} else {
-		w.Write([]byte(`Hello GitEE`))
-	}
-}
-
-/**
- * coding.net 的Webhook解析
- * 暂时不解析ContentType
- *
- */
-func coding(w http.ResponseWriter, request *http.Request) {
-	json := ParseCoding(request)
-	w.Write([]byte(json))
 }
 
 func gogs(w http.ResponseWriter, request *http.Request) {
@@ -143,54 +125,55 @@ func gogs(w http.ResponseWriter, request *http.Request) {
 	w.Write([]byte(json))
 }
 
-func index(w http.ResponseWriter, request *http.Request) {
-	// 处理UserAgent，判断是Coding还是Gitee
-	// X-Coding-Event
-	// X-Gitee-Event
-	// X-Gogs-Event
-	json := `Hello`
-	if request.Header.Get(`X-Coding-Event`) != `` {
-		json = ParseCoding(request)
-	} else if request.Header.Get(`X-Gitee-Event`) != `` {
-		json = ParseGitEE(request)
-	} else if request.Header.Get(`X-Gogs-Event`) != `` {
-		json = ParseGogs(request)
-	}
+func autoHook(configIndex int, owner string, name string, branch string, url string) string {
 
-	w.Write([]byte(json))
-}
+	// 读取文件【该项目的配置文件】
+	filePath := fmt.Sprintf("%s/%s/%s/", appConfig[configIndex].Platform, owner, name)
+	fileName := fmt.Sprintf("%s.json", branch)
 
-func hook(owner string, projectName string, branch string, pwd string) string {
+	projectFileName := filePath + fileName
 
-	// 读取文件
-	filename := owner + `.` + projectName + `.` + branch + `.json`
-
-	b, err := ioutil.ReadFile(filename)
-	if err != nil {
-		log.Print(`无法读取文件:` + filename + `:` + err.Error())
-		return "无法获取数据-"
-	}
-
-	fileJSON, err := simplejson.NewJson(b)
-	if err != nil {
-		log.Print(`JSON解析错误:` + err.Error())
-		return "数据解析错误"
-	}
-	filePwd, _ := fileJSON.Get(`password`).String()
-	filePath, _ := fileJSON.Get(`path`).String()
-	fileHead, _ := fileJSON.Get(`head`).String()
-
-	// 校验密码
-	if pwd != `` {
-		if pwd != filePwd {
-			log.Print(`密码校验错误:` + pwd + `:正确密码:` + filePwd + `:` + err.Error())
-			return "凭证校验异常"
+	var projectConfigModel model.ProjectConfig
+	// 检查文件是否存在
+	if !isExist(projectFileName) {
+		log.Print(fmt.Sprintf("自动创建配置文件: %s", projectFileName))
+		dirErr := CreateMutiDir(filePath)
+		if dirErr != nil {
+			log.Print(fmt.Sprintf("创建目录时出现错误: %s", dirErr.Error()))
+			return "配置文件创建失败"
 		}
+		// 仓库存放的地方
+		repositoryPath := fmt.Sprintf("%s/%s/%s/%s/%s", appConfig[0].Path, appConfig[configIndex].Platform, owner, name, branch)
+
+		projectConfigModel.Path = repositoryPath
+		projectConfigModel.Head = branch
+		projectConfigModel.Password = appConfig[configIndex].Password
+		projectConfigText, _ := json.Marshal(projectConfigModel)
+
+		// 创建配置文件
+		projectConfigF, _ := os.Create(projectFileName)
+		io.WriteString(projectConfigF, string(projectConfigText))
+		defer projectConfigF.Close()
+	} else {
+		projectConfigByte, err := ioutil.ReadFile(projectFileName)
+		if err != nil {
+			log.Println("读取项目配置文件出错" + err.Error())
+			return "项目配置文件读取出错"
+		}
+
+		json.Unmarshal(projectConfigByte, projectConfigModel)
 	}
+
+	// 检查目录是否存在
+	if !isExist(projectConfigModel.Path) {
+		CreateMutiDir(projectConfigModel.Path)
+	}
+
 	// 执行Shell 命令
-	c := `./git.sh ` + filePath + ` ` + fileHead + ` ` + branch
+	c := fmt.Sprintf("bash git.sh %s %s %s", projectConfigModel.Path, projectConfigModel.Head, url)
+	log.Print(c)
 	cmd := exec.Command("sh", "-c", c)
-	err = cmd.Start() // 该操作不阻塞
+	err := cmd.Start() // 该操作不阻塞
 	if err != nil {
 		log.Print(`Shell执行异常:` + c + `:` + err.Error())
 		return "任务执行异常"
@@ -198,107 +181,72 @@ func hook(owner string, projectName string, branch string, pwd string) string {
 	return "The Job Done!"
 }
 
-/**
- *
- * 解析Coding.net的数据
- *
- */
-func ParseCoding(request *http.Request) string {
-
-	event := request.Header.Get(`X-Coding-Event`)
-
-	if event == `ping` {
-		return "这个Coding不简单"
-	}
-
-	result, err := ioutil.ReadAll(request.Body)
+func loadConfig() error {
+	configFile, err := ioutil.ReadFile("./config.json")
 	if err != nil {
-		log.Print(`请求参数无法获取:` + err.Error())
-		return "未获取到数据"
+		log.Println("没有找到config.json文件")
+		return err
 	}
-
-	// 解析JSON
-	json, err := simplejson.NewJson(result)
-	if err != nil {
-		log.Print(`JSON解析出错:` + err.Error())
-		return "未获取到数据包"
-	}
-
-	hookID, err := json.Get(`hook_id`).String()
-	if err == nil {
-		return hookID + `一切正常`
-	}
-
-	// 分支名称
-	ref, _ := json.Get(`ref`).String()
-	branchs := strings.Split(ref, `/`)
-	branch := branchs[2]
-
-	// 获取拥有者
-	owner, _ := json.Get(`repository`).Get(`owner`).Get(`name`).String()
-	projectName, _ := json.Get(`repository`).Get(`name`).String()
-
-	// 获取密码
-	pwd, _ := json.Get(`token`).String()
-
-	return hook(owner, projectName, branch, pwd)
-
-}
-
-/**
- * 解析Gitee.com
- *
- */
-func ParseGitEE(request *http.Request) string {
-	result, err := ioutil.ReadAll(request.Body)
-	if err != nil {
-		log.Print(`请求参数无法获取:` + err.Error())
-		return "未获取到数据"
-	}
-
-	// 解析JSON
-	json, err := simplejson.NewJson(result)
-
-	// 分支名称
-	ref, _ := json.Get(`ref`).String()
-	branchs := strings.Split(ref, `/`)
-	branch := branchs[2]
-
-	// 获取项目名称
-	projName, _ := json.Get(`repository`).Get(`path_with_namespace`).String()
-	projectNameArr := strings.Split(projName, `/`)
-	owner := projectNameArr[0]
-	projectName := projectNameArr[1]
-
-	// 获取密码
-	pwd, _ := json.Get(`password`).String()
-
-	return hook(owner, projectName, branch, pwd)
+	json.Unmarshal(configFile, &appConfig)
+	return nil
 }
 
 func ParseGogs(request *http.Request) string {
+
 	result, err := ioutil.ReadAll(request.Body)
 	if err != nil {
 		log.Print(`请求参数无法获取:` + err.Error())
 		return "未获取到数据"
 	}
-
-	// 解析JSON
-	json, err := simplejson.NewJson(result)
+	configIndex := 0
+	var requestModel model.Gogs
+	json.Unmarshal([]byte(result), &requestModel)
 
 	// 分支名称
-	ref, _ := json.Get(`ref`).String()
-	branchs := strings.Split(ref, `/`)
-	branch := branchs[2]
+	branch := strings.Split(requestModel.Ref, "/")[2]
 
-	// 获取项目名称
-	projName, _ := json.Get(`repository`).Get(`full_name`).String()
-	projectNameArr := strings.Split(projName, `/`)
-	owner := projectNameArr[0]
-	projectName := projectNameArr[1]
+	// 项目名称
+	name := requestModel.Repository.Name
 
-	// 获取密码 # 暂时不做密码处理，空了再做
-	pwd := ``
+	// 拥有者的名称
+	owner := requestModel.Repository.Owner.Username
 
-	return hook(owner, projectName, branch, pwd)
+	for index, config := range appConfig {
+		if strings.EqualFold(config.Namespace, owner) && strings.EqualFold(config.Platform, "gogs") {
+			configIndex = index
+		}
+	}
+
+	// 仓库地址
+	url := requestModel.Repository.SSHURL
+	if strings.EqualFold(appConfig[configIndex].Proto, "http") {
+		url = requestModel.Repository.CloneURL
+	}
+
+	return autoHook(configIndex, owner, name, branch, url)
+}
+
+//调用os.MkdirAll递归创建文件夹
+func CreateMutiDir(filePath string) error {
+	if !isExist(filePath) {
+		err := os.MkdirAll(filePath, os.ModePerm)
+		if err != nil {
+			fmt.Println("创建文件夹失败,error info:", err)
+			return err
+		}
+		return err
+	}
+	return nil
+}
+
+// 判断所给路径文件/文件夹是否存在(返回true是存在)
+func isExist(path string) bool {
+	_, err := os.Stat(path) //os.Stat获取文件信息
+	if err != nil {
+		if os.IsExist(err) {
+			return true
+		}
+		return false
+	}
+	return true
 }

@@ -1,8 +1,10 @@
 # 前言
 
-主要用于小项目托管在[码云](http://gitee.com)和[Coding](http://coding.net)等平台的项目进行自动部署，将 `hook`  运行，就可以运行一个轻型的HTTP服务器
+主要用于小项目托管在Gogs平台的项目进行自动部署，将 `hook`运行，就可以运行一个轻型的HTTP服务器
 
-可多项目部署，如有多个项目，增加多个 `.json` 文件配置即可，__不需要重启hook进程__
+该项目主要是监听Gogs系统中，某个用户/组织下的所有项目，自动拉代码，无需再加配置文件
+
+重要提示：如果修改了config.json 一定要reload
 
 
 # 支持
@@ -12,8 +14,6 @@
 - [x] 支持Http协议，需配置credential.helper
 - [x] 支持自定义Shell脚本
 - [x] 支持Gogs
-- [x] 支持Coding
-- [x] 支持Gitee
 
 # 命令列表
 
@@ -30,33 +30,20 @@ hook -s stop     # 强行停止 SIGKILL
 
 * /
 
-自动解析，将根据Header头中的参数自动解析
-
-* /gitee
-
-解析[码云](http://gitee.com)的webhook通知，支持 `ContentType: application/json` 
-
-* /coding
-  
-解析[Coding](http://coding.net)的webhook通知，支持V2版本的通知、`ContentType: application/json`
-
-* /gogs
-  
-解析Gogs系列的webhook通知，支持`ContentType: application/json`
-
+自动解析，将根据Header头中的参数自动解析，仅支持gogs
 
 # 文件说明
 
 *  **git.sh**
 
-该文件是用于部署的，传的三个参数分别是 `项目在本机的目录` `项目的别名origin/master` `项目分支`
+该文件是用于部署的，传的三个参数分别是 `项目在本机的目录` `项目分支` `项目的git地址（SSH协议/HTTP协议）`
 
 也可以在**文件末尾**追加其他处理: 比如正式版发布时需要批量替换URL等操作
 
 #### 可手动执行
 
 ```shell
-./git.sh /home/wwwroot/abc origin/master master
+./git.sh /home/wwwroot/abc master http://code.abc.com/xxx/xxx.git
 ```
 
 *  **hook.go**
@@ -64,18 +51,20 @@ hook -s stop     # 强行停止 SIGKILL
 源码
 
 
-* **user.project.branch.json**
-
-例如你的coding用户名/分组名为**test**，项目名称为 himiweb，部署分支为 master， 则文件命名为： `test.himiweb.master.json`
-
+* **config.json**
 #### JSON配置解析
 
 ```json
-{
-    "path": "项目在本机的目录，如 /home/wwwroot/abc",
-    "head": "项目的别名，如origin/master",
-    "password": "hook的验证密码"
-}
+[
+    {
+        "platform": "平台，目前仅支持 gogs",
+        "namespace": "组织名称或者用户名称",
+        "path": "代码存放的目录",
+        "branch": "暂无用",
+        "proto": "协议，http或者ssh",
+        "password": "暂无用"
+    }
+]
 ```
 
 * **hook**
