@@ -161,7 +161,7 @@ func autoHook(configIndex int, owner string, name string, branch string, url str
 			return "项目配置文件读取出错"
 		}
 
-		json.Unmarshal(projectConfigByte, projectConfigModel)
+		json.Unmarshal(projectConfigByte, &projectConfigModel)
 	}
 
 	// 检查目录是否存在
@@ -202,20 +202,24 @@ func ParseGogs(request *http.Request) string {
 	var requestModel model.Gogs
 	json.Unmarshal([]byte(result), &requestModel)
 
-	// 分支名称
-	branch := strings.Split(requestModel.Ref, "/")[2]
-
-	// 项目名称
-	name := requestModel.Repository.Name
-
 	// 拥有者的名称
 	owner := requestModel.Repository.Owner.Username
+
+	// 分支名称
+	branch := strings.Split(requestModel.Ref, "/")[2]
 
 	for index, config := range appConfig {
 		if strings.EqualFold(config.Namespace, owner) && strings.EqualFold(config.Platform, "gogs") {
 			configIndex = index
 		}
 	}
+
+	if branch != appConfig[configIndex].Branch {
+		return "俺不接受这个分支的push"
+	}
+
+	// 项目名称
+	name := requestModel.Repository.Name
 
 	// 仓库地址
 	url := requestModel.Repository.SSHURL

@@ -15,4 +15,8 @@ else
 fi
 echo "Reset Permission"
 sudo chown -R $WEB_USER:$WEB_USERGROUP $WEB_PATH
-echo "Finished"
+if [ -f "deploy.json" ]; then
+    echo "Auto Deploying.."
+    sudo /home/deploy/deploy -path=$WEB_PATH -config=deploy.json
+    echo "Deployed"
+fi
