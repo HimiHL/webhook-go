@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -102,9 +105,6 @@ func deamonHTTP() {
 
 	loadConfig()
 
-	log.Print("- - - - - - - - - - - - - - -")
-	log.Print("加载配置文件")
-
 	go serveHTTP()
 
 	err = daemon.ServeSignals()
@@ -188,11 +188,14 @@ func loadConfig() error {
 		return err
 	}
 	json.Unmarshal(configFile, &appConfig)
+
+	log.Print("- - - - - - - - - - - - - - -")
+	log.Print("加载配置文件")
+
 	return nil
 }
 
 func ParseGogs(request *http.Request) string {
-
 	result, err := ioutil.ReadAll(request.Body)
 	if err != nil {
 		log.Print(`请求参数无法获取:` + err.Error())
@@ -201,6 +204,7 @@ func ParseGogs(request *http.Request) string {
 	configIndex := 0
 	var requestModel model.Gogs
 	json.Unmarshal([]byte(result), &requestModel)
+
 
 	// 拥有者的名称
 	owner := requestModel.Repository.Owner.Username
@@ -211,6 +215,16 @@ func ParseGogs(request *http.Request) string {
 	for index, config := range appConfig {
 		if strings.EqualFold(config.Namespace, owner) && strings.EqualFold(config.Platform, "gogs") {
 			configIndex = index
+		}
+	}
+	// 校验签名
+	header := request.Header
+	log.Println("拿到了签名文本", header["X-Gogs-Signature"][0])
+	if header["X-Gogs-Signature"][0] != "" {
+		signature := hmacSha256(string(result), appConfig[configIndex].Password)
+		log.Println("签名结果", signature)
+		if signature != header["X-Gogs-Signature"][0] {
+			return "签名校验失败"
 		}
 	}
 
@@ -253,4 +267,10 @@ func isExist(path string) bool {
 		return false
 	}
 	return true
+}
+
+func hmacSha256(data string, secret string) string {
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(data))
+	return hex.EncodeToString(h.Sum(nil))
 }
